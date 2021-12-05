@@ -21,6 +21,7 @@ find_package(rclcpp REQUIRED)
 find_package(sensor_msgs REQUIRED)
 find_package(OpenCV 4.2.0 REQUIRED)
 find_package(cv_bridge REQUIRED)
+find_package(camera_lite_interfaces REQUIRED)
 
 add_executable(camera_node src/camera_node.cpp)
 ament_target_dependencies(camera_node 
@@ -29,8 +30,22 @@ ament_target_dependencies(camera_node
   OpenCV
   cv_bridge)
 
+add_executable(picture_node src/picture_node.cpp)
+ament_target_dependencies(picture_node 
+  rclcpp
+  sensor_msgs
+  OpenCV
+  cv_bridge
+  camera_lite_interfaces)
+
 install(TARGETS
   camera_node
+  picture_node
   DESTINATION lib/${PROJECT_NAME})
+  
+install(
+  DIRECTORY launch
+  DESTINATION share/${PROJECT_NAME}
+)  
 
 ament_package()
