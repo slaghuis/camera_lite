@@ -3,6 +3,9 @@ A simple ROS2 publisher, using OpenCV to capture a frame from the camera and pub
 
 Has been tested on a Raspberry Pi 3 with Ubuntu 20.04 LTS and ROS Foxy.
 
+## Dependencies
+In order to take a picture, a simple service definition is needed.  Please install [Camera Lite Interfaces](https://github.com/slaghuis/camera_lite_interfaces.git)
+
 ## Installation
 MAKE SURE YOUR CAMERA HAS BEEN ENABLED.  (Out of scope for write-up)
 
@@ -32,4 +35,13 @@ ros2 run camera_lite camera_node --ros-args --remap /camera/image_raw:=/image
 Run image_tools showimage to see the camera output.
 ```
 ros2 run image_tools showimage
+```
+
+To run both the camera node, and the service to take a picture use the provided launch file.  Note the parameters in the launch file states the resolutions 640x380.  You can change this to a resolution supported by your camera and application.
+```
+ros2 launch camera.launch.py
+```
+Take a picture using this service call
+```
+ros2 service call /camera/save_picture camera_lite_interfaces/srv/Save "{name: /home/ubuntu/test.jpg}"
 ```
