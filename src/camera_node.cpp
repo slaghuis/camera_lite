@@ -40,22 +40,33 @@ class ImagePublisher : public rclcpp::Node
     ImagePublisher()
     : Node("camera_node")
     {
-      // Declare Parameters
-      this->declare_parameter<int>("frame_width", FRAME_WIDTH);
-      this->declare_parameter<int>("frame_height", FRAME_HEIGHT);
-
-      // Read from parameters
-      this->get_parameter("frame_width", frame_width_);
-      this->get_parameter("frame_height", frame_height_);
+      // Declare and get Parameters
+      frame_width_ = this->declare_parameter<int>("frame_width", FRAME_WIDTH);
+      frame_height_ = this->declare_parameter<int>("frame_height", FRAME_HEIGHT);
+      device_id_ = static_cast<int>(this->declare_parameter("device_id", 0));
+      freq_ = this->declare_parameter("frequency", 30.0);
+      frame_id_ = this->declare_parameter("frame_id", "camera");
 
       // Publisher publishes String messages to a topic named "addison".
       // The size of the queue is 10 messages.
       publisher_ = this->create_publisher<sensor_msgs::msg::Image>("camera/image_raw",10);
+    
+      // Open the camera stream
+      cap.open(device_id_, cv::CAP_V4L2);
+      
+      // Set the width and height based on command line arguments.
+      cap.set(cv::CAP_PROP_FRAME_WIDTH, static_cast<double>(frame_width_));
+      cap.set(cv::CAP_PROP_FRAME_HEIGHT, static_cast<double>(frame_height_));
+      
+      if (!cap.isOpened()) {
+        RCLCPP_ERROR(this->get_logger(), "Could not open video stream");
+        throw std::runtime_error("Could not open video stream");
+      }
 
-      // Initialize the timer. The timer_callback function will execute every
-      // 500 milliseconds.
+      // Initialize the timer. 
       timer_ = this->create_wall_timer(
-      500ms, std::bind(&ImagePublisher::timer_callback, this));
+        std::chrono::milliseconds(static_cast<int>(1000.0 / freq_)), 
+        std::bind(&ImagePublisher::timer_callback, this));
     }
 
   private:
@@ -63,32 +74,24 @@ class ImagePublisher : public rclcpp::Node
     void timer_callback()
     {
 
-      // Open the camera
-      cv::VideoCapture camera(0,cv::CAP_V4L2);
-
-      if (!camera.isOpened()) {
-        RCLCPP_ERROR(this->get_logger(),"ERROR: Could not open camera");
-        return;
-      }
-      // camera.set( cv::CAP_PROP_FORMAT, cv::CAP_MODE_BGR);
-      camera.set( cv::CAP_PROP_FRAME_WIDTH, frame_width_);
-      camera.set( cv::CAP_PROP_FRAME_HEIGHT, frame_height_);
       cv::Mat frame;
 
       // Capture the next frame from the camera
-      camera >> frame;
+      cap >> frame;
 
       cv_bridge::CvImage img_bridge;
       sensor_msgs::msg::Image img_msg; // >> message to be sent
 
       std_msgs::msg::Header header; // empty header
       header.stamp = this->get_clock()->now();
-      header.frame_id = "camera";
+      header.frame_id = frame_id_;
       img_bridge = cv_bridge::CvImage(header, sensor_msgs::image_encodings::BGR8, frame);
       img_bridge.toImageMsg(img_msg); // from cv_bridge to sensor_msgs::msg::Image
       publisher_->publish(img_msg);
     }
-
+ 
+    cv::VideoCapture cap;
+    
     // Declaration of the timer_ attribute
     rclcpp::TimerBase::SharedPtr timer_;
 
@@ -96,8 +99,11 @@ class ImagePublisher : public rclcpp::Node
     rclcpp::Publisher<sensor_msgs::msg::Image>::SharedPtr publisher_;
 
    // Declaration of parameters
-   int frame_width_;
-   int frame_height_;
+   int device_id_;
+   size_t frame_width_;
+   size_t frame_height_;
+   double freq_;
+   std::string frame_id_;
 };
 
 // Node execution starts here
