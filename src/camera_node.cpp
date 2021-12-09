@@ -16,6 +16,7 @@
 #include <functional> // Arithmetic, comparisons, and logical operations
 #include <memory>     // Dynamic memory management
 #include <string>     // String functions
+#include <map>
 
 #include "rclcpp/rclcpp.hpp"
 
@@ -32,6 +33,18 @@
 static const int FRAME_WIDTH = 1024;
 static const int FRAME_HEIGHT = 768;
 
+static
+std::map<std::string, rmw_qos_reliability_policy_t> name_to_reliability_policy_map = {
+  {"reliable", RMW_QOS_POLICY_RELIABILITY_RELIABLE},
+  {"best_effort", RMW_QOS_POLICY_RELIABILITY_BEST_EFFORT}
+};
+
+static
+std::map<std::string, rmw_qos_history_policy_t> name_to_history_policy_map = {
+  {"keep_last", RMW_QOS_POLICY_HISTORY_KEEP_LAST},
+  {"keep_all", RMW_QOS_POLICY_HISTORY_KEEP_ALL}
+};
+
 using namespace std::chrono_literals;
 
 class ImagePublisher : public rclcpp::Node
@@ -40,6 +53,41 @@ class ImagePublisher : public rclcpp::Node
     ImagePublisher()
     : Node("camera_node")
     {
+    
+      // Parse 'reliability' parameter
+      rcl_interfaces::msg::ParameterDescriptor reliability_desc;
+      reliability_desc.description = "Reliability QoS setting for the image publisher";
+      reliability_desc.additional_constraints = "Must be one of: ";
+      for (auto entry : name_to_reliability_policy_map) {
+        reliability_desc.additional_constraints += entry.first + " ";
+      }
+      const std::string reliability_param = this->declare_parameter(
+        "reliability", "reliable", reliability_desc);
+      auto reliability = name_to_reliability_policy_map.find(reliability_param);
+      if (reliability == name_to_reliability_policy_map.end()) {
+        std::ostringstream oss;
+        oss << "Invalid QoS reliability setting '" << reliability_param << "'";
+        throw std::runtime_error(oss.str());
+      }
+      reliability_policy_ = reliability->second;
+
+      // Parse 'history' parameter
+      rcl_interfaces::msg::ParameterDescriptor history_desc;
+      history_desc.description = "History QoS setting for the image publisher";
+      history_desc.additional_constraints = "Must be one of: ";
+      for (auto entry : name_to_history_policy_map) {
+        history_desc.additional_constraints += entry.first + " ";
+      }
+      const std::string history_param = this->declare_parameter(
+        "history", name_to_history_policy_map.begin()->first, history_desc);
+      auto history = name_to_history_policy_map.find(history_param);
+      if (history == name_to_history_policy_map.end()) {
+        std::ostringstream oss;
+        oss << "Invalid QoS history setting '" << history_param << "'";
+        throw std::runtime_error(oss.str());
+      }
+      history_policy_ = history->second;
+    
       // Declare and get Parameters
       frame_width_ = this->declare_parameter<int>("frame_width", FRAME_WIDTH);
       frame_height_ = this->declare_parameter<int>("frame_height", FRAME_HEIGHT);
@@ -47,9 +95,23 @@ class ImagePublisher : public rclcpp::Node
       freq_ = this->declare_parameter("frequency", 30.0);
       frame_id_ = this->declare_parameter("frame_id", "camera");
 
-      // Publisher publishes String messages to a topic named "addison".
-      // The size of the queue is 10 messages.
-      publisher_ = this->create_publisher<sensor_msgs::msg::Image>("camera/image_raw",10);
+      auto qos = rclcpp::QoS(
+      rclcpp::QoSInitialization(
+        // The history policy determines how messages are saved until taken by
+        // the reader.
+        // KEEP_ALL saves all messages until they are taken.
+        // KEEP_LAST enforces a limit on the number of messages that are saved,
+        // specified by the "depth" parameter.
+        history_policy_,
+        // Depth represents how many messages to store in history when the
+        // history policy is KEEP_LAST.
+        depth_
+      ));
+      // The reliability policy can be reliable, meaning that the underlying transport layer will try
+      // ensure that every message gets received in order, or best effort, meaning that the transport
+      // makes no guarantees about the order or reliability of delivery.
+      qos.reliability(reliability_policy_);
+      publisher_ = this->create_publisher<sensor_msgs::msg::Image>("camera/image_raw", qos);
     
       // Open the camera stream
       cap.open(device_id_, cv::CAP_V4L2);
@@ -78,6 +140,11 @@ class ImagePublisher : public rclcpp::Node
 
       // Capture the next frame from the camera
       cap >> frame;
+      
+      // If no frame was grabbed, return early
+      if (frame.empty()) {
+        return;
+      }
 
       cv_bridge::CvImage img_bridge;
       sensor_msgs::msg::Image img_msg; // >> message to be sent
@@ -85,6 +152,9 @@ class ImagePublisher : public rclcpp::Node
       std_msgs::msg::Header header; // empty header
       header.stamp = this->get_clock()->now();
       header.frame_id = frame_id_;
+      
+      //sensor_msgs::msg::Image container(frame, header);
+      //publisher_->publish(std::move(container));
       img_bridge = cv_bridge::CvImage(header, sensor_msgs::image_encodings::BGR8, frame);
       img_bridge.toImageMsg(img_msg); // from cv_bridge to sensor_msgs::msg::Image
       publisher_->publish(img_msg);
@@ -102,7 +172,10 @@ class ImagePublisher : public rclcpp::Node
    int device_id_;
    size_t frame_width_;
    size_t frame_height_;
+   size_t depth_;
    double freq_;
+   rmw_qos_reliability_policy_t reliability_policy_;
+   rmw_qos_history_policy_t history_policy_;
    std::string frame_id_;
 };
 

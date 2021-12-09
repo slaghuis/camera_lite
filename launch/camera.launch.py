@@ -15,8 +15,11 @@ def generate_launch_description():
             {"frame_width"  : 640},
             {"frame_height" : 480},
             {"device_id"    : 0},
-            {"frequency"    : 30},
-            {"frame_id"     : "camera"}
+            {"frequency"    : 15.0},
+            {"frame_id"     : "camera"},
+            {"reliability"  : "reliable"},
+            {"history"      : "keep_last"},
+            {"depth"        : 5}
         ]
     )
     picture_node=Node(
