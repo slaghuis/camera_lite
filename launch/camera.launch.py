@@ -13,7 +13,10 @@ def generate_launch_description():
         emulate_tty=True,
         parameters = [
             {"frame_width"  : 640},
-            {"frame_height" : 480}
+            {"frame_height" : 480},
+            {"device_id"    : 0},
+            {"frequency"    : 30},
+            {"frame_id"     : "camera"}
         ]
     )
     picture_node=Node(
